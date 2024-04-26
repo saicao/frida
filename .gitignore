@@ -7,4 +7,5 @@
 /releng/modules/frida-gadget-ios/*.dylib
 /releng/modules/frida-gadget-ios/node_modules
 /g-ir-cpp-*.c
-.cache
+/.cache
+/local_sdk
