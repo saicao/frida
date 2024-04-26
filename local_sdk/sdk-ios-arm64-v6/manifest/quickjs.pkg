@@ -1,0 +1,3 @@
+include/quickjs/quickjs.h
+lib/libquickjs.a
+lib/pkgconfig/quickjs.pc

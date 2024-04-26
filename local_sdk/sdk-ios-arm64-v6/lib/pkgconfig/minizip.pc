@@ -1,0 +1,11 @@
+prefix=${frida_sdk_prefix}
+includedir=${prefix}/include
+libdir=${prefix}/lib
+
+Name: minizip
+Description: Minizip zip file manipulation library
+URL: https://github.com/nmoinvaz/minizip
+Version: 3.0.7
+Requires: zlib, libiconv
+Libs: -L${libdir} -lminizip
+Cflags: -I${includedir}/minizip

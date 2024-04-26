@@ -1,0 +1,10 @@
+prefix=${frida_sdk_prefix}
+includedir=${prefix}/include
+libdir=${prefix}/lib
+
+Name: V8
+Description: V8 JavaScript Engine
+Version: 10.9.42
+Requires: zlib
+Libs: -L${libdir} -lv8-10.0
+Cflags: -I${includedir}/v8-10.0 -DV8_GN_HEADER

@@ -1,0 +1,10 @@
+prefix=${frida_sdk_prefix}
+includedir=${prefix}/include
+libdir=${prefix}/lib
+
+Name: OpenSSL-libssl
+Description: Secure Sockets Layer and cryptography libraries
+Version: 3.0.12
+Requires: libcrypto
+Libs: -L${libdir} -lssl
+Cflags: -I${includedir}

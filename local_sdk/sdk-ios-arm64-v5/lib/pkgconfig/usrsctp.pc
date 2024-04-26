@@ -1,0 +1,10 @@
+prefix=${frida_sdk_prefix}
+includedir=${prefix}/include
+libdir=${prefix}/lib
+
+Name: usrsctp
+Description: A portable SCTP userland stack
+URL: https://github.com/sctplab/usrsctp
+Version: 0.9.5.0
+Libs: -L${libdir} -lusrsctp
+Cflags: -I${includedir}

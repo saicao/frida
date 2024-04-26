@@ -1,0 +1,10 @@
+prefix=${frida_sdk_prefix}
+includedir=${prefix}/include
+libdir=${prefix}/lib
+
+Name: libtcc
+Description: Tiny C Compiler
+URL: https://bellard.org/tcc/
+Version: 0.9.27-frida
+Libs: -L${libdir} -ltcc -ldl
+Cflags: -I${includedir}

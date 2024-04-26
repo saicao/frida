@@ -1,0 +1,10 @@
+prefix=${frida_sdk_prefix}
+includedir=${prefix}/include
+libdir=${prefix}/lib
+
+Name: quickjs
+Description: Small and embeddable JavaScript engine
+URL: https://bellard.org/quickjs/
+Version: 2024-01-13-frida
+Libs: -L${libdir} -lquickjs -ldl -lm
+Cflags: -I${includedir}/quickjs
