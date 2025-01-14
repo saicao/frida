@@ -8,4 +8,6 @@
 /releng/modules/frida-gadget-ios/node_modules
 /g-ir-cpp-*.c
 /.cache
-/loacl_sdk
+/.vscode
+/.dev
+/.venv 

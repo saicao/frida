@@ -1,4 +1,0 @@
-include/gioopenssl.h
-lib/gio/modules/libgioopenssl.a
-lib/pkgconfig/gioopenssl.pc
-share/vala/vapi/gioopenssl.vapi

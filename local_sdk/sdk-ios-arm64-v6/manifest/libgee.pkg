@@ -1,5 +1,0 @@
-include/gee-0.8/gee.h
-lib/libgee-0.8.a
-lib/pkgconfig/gee-0.8.pc
-share/vala/vapi/gee-0.8.deps
-share/vala/vapi/gee-0.8.vapi
