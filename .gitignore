@@ -4,3 +4,7 @@
 /releng/modules/frida-gadget-ios/*.dylib
 /releng/modules/frida-gadget-ios/node_modules
 /subprojects/*
+/.vscode/
+/.venv/
+/.cache/
+/.dev/
