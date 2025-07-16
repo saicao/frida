@@ -58,3 +58,12 @@ To ensure that macOS accepts the newly created certificate, restart the
 ## Learn more
 
 Have a look at our [documentation](https://frida.re/docs/home/).
+
+## BUILD
+
+export MACOS_CERTID=frida-cert
+export IOS_CERTID=frida-cert
+export WATCHOS_CERTID=frida-cert
+export TVOS_CERTID=frida-cert
+
+./configure --build=macos-arm64  --host=ios-arm64e --enable-symbols --without-prebuilds=sdk:host --prefix $(pwd)/build/install  
