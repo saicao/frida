@@ -61,6 +61,8 @@ Have a look at our [documentation](https://frida.re/docs/home/).
 
 ## BUILD
 
+python setuptools have to install
+
 export MACOS_CERTID=frida-cert
 export IOS_CERTID=frida-cert
 export WATCHOS_CERTID=frida-cert
