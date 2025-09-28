@@ -1,7 +1,7 @@
 task:
   name: freebsd-x86_64
   freebsd_instance:
-    image_family: freebsd-14-0
+    image_family: freebsd-14-2
   environment:
     S3_ACCESS_KEY: ENCRYPTED[2f368bef589e43779394e459191eaad2fc4cc50dc36c6f03168a1e8e43897476e8bf596fd4dd0d988bcbab8fa8e171f8]
     S3_SECRET_KEY: ENCRYPTED[45f352473433a1053622a662ce8d57bc7421bce5772c9c5caf4a0e54f63944bd420f71101e014876e038f0c66c134ac2]
@@ -9,14 +9,13 @@ task:
     CF_TOKEN: ENCRYPTED[4f9f3f7c8603fd32978b825d65f34b06fce8e51bedb4303744c799d21fc38266173a6be5a7a46b5e616573d27c9f6e91]
     PYTHON: /usr/local/bin/python3.11
     PYTHON3: /usr/local/bin/python3.11
-    NODE_TARGETS_FREEBSD: '20.0.0'
-    ELECTRON_TARGETS_FREEBSD: '30.0.0'
   timeout_in: 2h
   install_dependencies_script: |
     pkg install -y \
       bash \
       bison \
       git \
+      go \
       npm \
       py311-pip \
       py311-setuptools
@@ -63,6 +62,7 @@ task:
     --disable-frida-tools
     --
     -Dfrida-gum:devkits=gum,gumjs
+    -Dfrida-core:compiler_backend=enabled
     -Dfrida-core:devkits=core
   compile_script: make
   install_script: make install
@@ -88,27 +88,14 @@ task:
     path: "$FRIDA_PREFIX/wheels/*.whl"
   build_node_script: |
     installdir=$FRIDA_PREFIX/prebuilds
-    declare -A prebuilds=(
-      [node]="$NODE_TARGETS_FREEBSD"
-      [electron]="$ELECTRON_TARGETS_FREEBSD"
-    )
     export FRIDA_DEPS=$PWD/deps
     export PKG_CONFIG_PATH=$FRIDA_PREFIX/libdata/pkgconfig
     python tools/ensure-submodules.py frida-node
     cd subprojects/frida-node
     npm version $FRIDA_VERSION
+    ./configure "--prefix=$FRIDA_PREFIX"
+    make prebuild
     mkdir "$installdir"
-    for runtime in "${!prebuilds[@]}"; do
-      targets=${prebuilds[$runtime]}
-      for target in $targets; do
-        ./configure \
-            "--prefix=$FRIDA_PREFIX" \
-            --with-runtime=$runtime \
-            --with-target=$target
-        make prebuild
-        cp build/*.tar.gz "$installdir"
-        rm -rf build
-      done
-    done
+    cp build/*.tar.gz "$installdir"
   frida_node_freebsd_x86_64_artifacts:
     path: "$FRIDA_PREFIX/prebuilds/*"

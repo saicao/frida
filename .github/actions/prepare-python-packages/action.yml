@@ -1,15 +1,5 @@
-name: Publish Python bindings
-description: Publishes Python source distribution and wheels to PyPI
-inputs:
-  site:
-    required: true
-    path: Where to publish; set to either “production” or “development”
-  pypi-token:
-    required: true
-    description: The token used to authenticate with pypi.org
-  testpypi-token:
-    required: true
-    description: The token used to authenticate with test.pypi.org
+name: Prepare Python packages for publishing
+description: Prepares Python source distribution and wheels to be published
 runs:
   using: composite
   steps:
@@ -28,6 +18,11 @@ runs:
       uses: actions/download-artifact@v4
       with:
         name: frida-python-windows-x86_64
+        path: build/python-packages/
+    - name: Download wheel for Windows/arm64
+      uses: actions/download-artifact@v4
+      with:
+        name: frida-python-windows-arm64
         path: build/python-packages/
     - name: Download wheel for macOS/x86_64
       uses: actions/download-artifact@v4
@@ -59,16 +54,3 @@ runs:
       with:
         name: frida-python-linux-arm64
         path: build/python-packages/
-    - name: Publish to pypi.org
-      if: inputs.site == 'production'
-      uses: pypa/gh-action-pypi-publish@release/v1.5
-      with:
-        password: ${{ inputs.pypi-token }}
-        packages_dir: build/python-packages/
-    - name: Publish to test.pypi.org
-      if: inputs.site == 'development'
-      uses: pypa/gh-action-pypi-publish@release/v1.5
-      with:
-        password: ${{ inputs.testpypi-token }}
-        repository_url: https://test.pypi.org/legacy/
-        packages_dir: build/python-packages/

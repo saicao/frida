@@ -3,11 +3,8 @@ name: CI
 on: push
 
 env:
+  FRIDA_COMPILER_MOD: subprojects/frida-core/src/compiler/go.mod
   ANDROID_NDK_VERSION: r25b
-  NODE_TARGETS_DEFAULT: '16.0.0 18.0.0 20.0.0 22.0.0'
-  NODE_TARGETS_FREEBSD: '20.0.0'
-  ELECTRON_TARGETS_DEFAULT: '31.0.0'
-  ELECTRON_TARGETS_FREEBSD: '30.0.0'
 
 jobs:
   publish-prod:
@@ -39,7 +36,7 @@ jobs:
           cloudflare-email: ${{ secrets.CF_EMAIL }}
           cloudflare-token: ${{ secrets.CF_TOKEN }}
       - name: Grab needed submodules
-        run: python tools/ensure-submodules.py frida-core frida-python frida-node
+        run: python tools/ensure-submodules.py frida-gum frida-core frida-python frida-node
       - name: Install tools
         run: |
           sudo apt-get update
@@ -51,42 +48,42 @@ jobs:
           pattern: release-asset-*
           merge-multiple: true
           path: build/release-assets/
-      - name: Download Node.js and Electron prebuilds for Windows/x86
-        uses: actions/download-artifact@v4
-        with:
-          name: frida-node-windows-x86
-          path: build/release-assets/
-      - name: Download Node.js and Electron prebuilds for Windows/x86_64
+      - name: Download Node-API prebuilds for Windows/x86_64
         uses: actions/download-artifact@v4
         with:
           name: frida-node-windows-x86_64
           path: build/release-assets/
-      - name: Download Node.js and Electron prebuilds for macOS/x86_64
+      - name: Download Node-API prebuilds for Windows/arm64
+        uses: actions/download-artifact@v4
+        with:
+          name: frida-node-windows-arm64
+          path: build/release-assets/
+      - name: Download Node-API prebuilds for macOS/x86_64
         uses: actions/download-artifact@v4
         with:
           name: frida-node-macos-x86_64
           path: build/release-assets/
-      - name: Download Node.js and Electron prebuilds for macOS/arm64
+      - name: Download Node-API prebuilds for macOS/arm64
         uses: actions/download-artifact@v4
         with:
           name: frida-node-macos-arm64
           path: build/release-assets/
-      - name: Download Node.js and Electron prebuilds for Linux/x86
+      - name: Download Node-API prebuilds for Linux/x86
         uses: actions/download-artifact@v4
         with:
           name: frida-node-linux-x86
           path: build/release-assets/
-      - name: Download Node.js and Electron prebuilds for Linux/x86_64
+      - name: Download Node-API prebuilds for Linux/x86_64
         uses: actions/download-artifact@v4
         with:
           name: frida-node-linux-x86_64
           path: build/release-assets/
-      - name: Download Node.js and Electron prebuilds for Linux/armhf
+      - name: Download Node-API prebuilds for Linux/armhf
         uses: actions/download-artifact@v4
         with:
           name: frida-node-linux-armhf
           path: build/release-assets/
-      - name: Download Node.js and Electron prebuilds for Linux/arm64
+      - name: Download Node-API prebuilds for Linux/arm64
         uses: actions/download-artifact@v4
         with:
           name: frida-node-linux-arm64
@@ -105,12 +102,13 @@ jobs:
           name: "Frida ${{ env.FRIDA_VERSION }}"
           body: "See https://frida.re/news/ for details."
           files: build/release-assets/*
-      - name: Publish Python bindings to PyPI
-        uses: ./.github/actions/publish-python-bindings
+      - name: Prepare Python packages
+        uses: ./.github/actions/prepare-python-packages
+      - name: Publish Python bindings to pypi.org
+        uses: pypa/gh-action-pypi-publish@release/v1
         with:
-          site: production
-          pypi-token: ${{ secrets.PYPI_API_TOKEN }}
-          testpypi-token: ${{ secrets.TEST_PYPI_API_TOKEN }}
+          password: ${{ secrets.PYPI_API_TOKEN }}
+          packages-dir: build/python-packages/
       - name: Publish .deb packages
         uses: ./.github/actions/publish-debs
         with:
@@ -123,11 +121,15 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       - name: Publish Node.js bindings to npm
         run: |
-          cd subprojects/frida-node
+          export FRIDA_DEPS=$PWD/deps
+          cd subprojects/frida-node/subprojects
+          ln -s ../../frida-gum .
+          ln -s ../../frida-core .
+          cd ..
           git submodule update --init --recursive
           npm version $FRIDA_VERSION
-          mkdir prebuilds
-          cp ../../build/release-assets/frida-*-node-*-linux-x64.tar.gz prebuilds/
+          ./configure -- -Dfrida-core:compat=disabled
+          make
           npm install
           npm publish
       - name: Publish frida-gadget-ios to npm
@@ -176,12 +178,14 @@ jobs:
         uses: ./.github/actions/package-ios-assets
       - name: Package tvOS assets
         uses: ./.github/actions/package-tvos-assets
+      - name: Prepare Python packages
+        uses: ./.github/actions/prepare-python-packages
       - name: Publish Python bindings to TestPyPI
-        uses: ./.github/actions/publish-python-bindings
+        uses: pypa/gh-action-pypi-publish@release/v1
         with:
-          site: development
-          pypi-token: ${{ secrets.PYPI_API_TOKEN }}
-          testpypi-token: ${{ secrets.TEST_PYPI_API_TOKEN }}
+          password: ${{ secrets.TEST_PYPI_API_TOKEN }}
+          packages-dir: build/python-packages/
+          repository-url: https://test.pypi.org/legacy/
       - name: Publish .deb packages
         uses: ./.github/actions/publish-debs
         with:
@@ -479,7 +483,7 @@ jobs:
     needs: frida-windows
     strategy:
       matrix:
-        arch: [x86, x86_64]
+        arch: [x86, x86_64, arm64]
     runs-on: ubuntu-latest
     steps:
       - name: Check out repo
@@ -513,6 +517,7 @@ jobs:
         with:
           name: frida-gadget-windows-${{ matrix.arch }}
       - name: Package .NET bindings
+        if: matrix.arch != 'arm64'
         uses: ./.github/actions/package-artifact-file
         with:
           name: frida-clr-windows-${{ matrix.arch }}
@@ -595,7 +600,7 @@ jobs:
     needs: frida-linux
     strategy:
       matrix:
-        arch: [x86, x86_64, x86_64-musl, armhf, arm64, arm64-musl, mips, mipsel, mips64, mips64el]
+        arch: [x86, x86_64, x86_64-musl, armhf, armhf-musl, armbe8, arm64, arm64be, arm64-musl, mips, mipsel, mips64, mips64el]
     runs-on: ubuntu-latest
     steps:
       - name: Check out repo
@@ -786,11 +791,13 @@ jobs:
         with:
           name: frida-inject-qnx-${{ matrix.arch }}
 
-  frida-windows:
+  frida-windows-intel:
     needs: sdk-windows
     strategy:
       matrix:
-        arch: [x86, x86_64]
+        include:
+          - { arch: x86,    sys: MINGW32,    pkg: 'mingw-w64-i686-gcc'            }
+          - { arch: x86_64, sys: MINGW64,    pkg: 'mingw-w64-x86_64-gcc'          }
       fail-fast: false
     runs-on: windows-latest
     steps:
@@ -806,9 +813,22 @@ jobs:
           cloudflare-email: ${{ secrets.CF_EMAIL }}
           cloudflare-token: ${{ secrets.CF_TOKEN }}
           architecture: ${{ matrix.arch == 'x86_64' && 'x64' || matrix.arch }}
+      - name: Install MinGW toolchain for cgo support
+        id: msys2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: ${{ matrix.sys }}
+          install: ${{ matrix.pkg }}
+      - name: Grab frida-core
+        run: python tools/ensure-submodules.py frida-core
+      - name: Install Go toolchain
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: ${{ env.FRIDA_COMPILER_MOD }}
+          cache-dependency-path: ${{ env.FRIDA_COMPILER_MOD }}
       - name: Install Qt
-        if: ${{ contains(matrix.arch, '64') }}
-        uses: jurplel/install-qt-action@v3
+        if: matrix.arch == 'x86_64'
+        uses: jurplel/install-qt-action@v4
         with:
           version: '6.7.0'
           cache: true
@@ -825,11 +845,24 @@ jobs:
           --
           "-Dfrida_qml=auto"
           "-Dfrida-gum:devkits=gum,gumjs"
+          "-Dfrida-core:compiler_backend=enabled"
           "-Dfrida-core:devkits=core"
+        env:
+          MSYS2_LOCATION: ${{ steps.msys2.outputs.msys2-location }}
       - name: Compile
         run: .\make
       - name: Install
         run: .\make install
+      - name: Upload components needed for emulation on arm64
+        if: matrix.arch == 'x86_64'
+        uses: actions/upload-artifact@v4
+        with:
+          name: frida-core-emulation-windows
+          path: |
+            build/subprojects/frida-core/src/frida-helper.exe
+            build/subprojects/frida-core/lib/agent/frida-agent.dll
+            build/subprojects/frida-core/compat/frida-helper.exe
+            build/subprojects/frida-core/compat/frida-agent.dll
       - name: Upload Gum devkit
         uses: actions/upload-artifact@v4
         with:
@@ -861,13 +894,13 @@ jobs:
           name: frida-inject-windows-${{ matrix.arch }}
           path: ${{ env.FRIDA_PREFIX }}/bin/frida-inject.exe
       - name: Upload 32-bit frida-gadget
-        if: ${{ !contains(matrix.arch, '64') }}
+        if: matrix.arch != 'x86_64'
         uses: actions/upload-artifact@v4
         with:
           name: frida-gadget-windows-${{ matrix.arch }}
           path: ${{ env.FRIDA_PREFIX }}/lib/frida/32/frida-gadget.dll
       - name: Upload 64-bit frida-gadget
-        if: ${{ contains(matrix.arch, '64') }}
+        if: matrix.arch == 'x86_64'
         uses: actions/upload-artifact@v4
         with:
           name: frida-gadget-windows-${{ matrix.arch }}
@@ -883,18 +916,9 @@ jobs:
           name: frida-python-windows-${{ matrix.arch }}
           path: ${{ env.FRIDA_PREFIX }}/wheels/*.whl
       - name: Build Node.js bindings
+        if: matrix.arch == 'x86_64'
         run: |
           $installdir = "$Env:FRIDA_PREFIX\prebuilds"
-          $nodeTargets = '${{ env.NODE_TARGETS_DEFAULT }}'.Split(' ')
-          $electronTargets = '${{ env.ELECTRON_TARGETS_DEFAULT }}'.Split(' ')
-          if ('${{ matrix.arch }}' -eq 'x86') {
-            $nodeTargets = $nodeTargets | where { [int]($_.Split('.')[0]) -le 16 }
-            $electronTargets = @()
-          }
-          $prebuilds = @{
-            node = $nodeTargets
-            electron = $electronTargets
-          }
           $Env:FRIDA_DEPS = "$pwd\deps"
           $Env:PKG_CONFIG_PATH = "$Env:FRIDA_PREFIX\lib\pkgconfig"
           function Run() {
@@ -909,21 +933,14 @@ jobs:
           Run python .\tools\ensure-submodules.py frida-node
           cd subprojects\frida-node
           Run npm version $FRIDA_VERSION
+          Run .\configure `
+              --prefix=$Env:FRIDA_PREFIX `
+              --host=windows-${{ matrix.arch }}
+          Run .\make prebuild
           New-Item -ItemType Directory -Path $installdir
-          foreach ($item in $prebuilds.GetEnumerator()) {
-            $runtime = $item.Key
-            foreach ($target in $item.Value) {
-              Run .\configure `
-                  --prefix=$Env:FRIDA_PREFIX `
-                  --host=windows-${{ matrix.arch }} `
-                  --with-runtime=$runtime `
-                  --with-target=$target
-              Run .\make prebuild
-              Copy-Item .\build\*.tar.gz -Destination $installdir
-              Remove-Item build -Recurse
-            }
-          }
+          Copy-Item .\build\*.tar.gz -Destination $installdir
       - name: Upload Node.js bindings
+        if: matrix.arch == 'x86_64'
         uses: actions/upload-artifact@v4
         with:
           name: frida-node-windows-${{ matrix.arch }}
@@ -946,7 +963,7 @@ jobs:
           name: frida-clr-windows-${{ matrix.arch }}
           path: ${{ env.FRIDA_PREFIX }}/bin/Frida.dll
       - name: Upload QML bindings
-        if: ${{ contains(matrix.arch, '64') }}
+        if: matrix.arch == 'x86_64'
         uses: actions/upload-artifact@v4
         with:
           name: frida-qml-windows-${{ matrix.arch }}
@@ -954,6 +971,143 @@ jobs:
             ${{ env.FRIDA_PREFIX }}/lib/qml/
             !*.lib
             !*.pdb
+
+  frida-windows:
+    needs: frida-windows-intel
+    runs-on: windows-11-arm
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up environment
+        uses: ./.github/actions/setup-windows-env
+        with:
+          aws-access-key-id: ${{ secrets.S3_ACCESS_KEY }}
+          aws-secret-access-key: ${{ secrets.S3_SECRET_KEY }}
+          cloudflare-email: ${{ secrets.CF_EMAIL }}
+          cloudflare-token: ${{ secrets.CF_TOKEN }}
+          architecture: arm64
+      - name: Install MinGW toolchain for cgo support
+        id: msys2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: CLANGARM64
+          install: mingw-w64-clang-aarch64-clang
+      - name: Grab frida-core
+        run: python tools/ensure-submodules.py frida-core
+      - name: Install Go toolchain
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: ${{ env.FRIDA_COMPILER_MOD }}
+          cache-dependency-path: ${{ env.FRIDA_COMPILER_MOD }}
+      - name: Download emulation components
+        uses: actions/download-artifact@v4
+        with:
+          name: frida-core-emulation-windows
+          path: emulation/
+      - name: Configure
+        run: |
+          $helperModern = (Resolve-Path "emulation/src/frida-helper.exe").Path
+          $agentModern = (Resolve-Path "emulation/lib/agent/frida-agent.dll").Path
+          $helperLegacy = (Resolve-Path "emulation/compat/frida-helper.exe").Path
+          $agentLegacy = (Resolve-Path "emulation/compat/frida-agent.dll").Path
+
+          .\configure `
+            --prefix=$Env:FRIDA_PREFIX `
+            --host=windows-arm64 `
+            --enable-gadget `
+            --enable-server `
+            --enable-portal `
+            --enable-inject `
+            -- `
+            "-Dfrida_qml=auto" `
+            "-Dfrida-gum:devkits=gum,gumjs" `
+            "-Dfrida-core:compiler_backend=enabled" `
+            "-Dfrida-core:devkits=core" `
+            "-Dfrida-core:helper_emulated_modern=$helperModern" `
+            "-Dfrida-core:agent_emulated_modern=$agentModern" `
+            "-Dfrida-core:helper_emulated_legacy=$helperLegacy" `
+            "-Dfrida-core:agent_emulated_legacy=$agentLegacy"
+        env:
+          MSYS2_LOCATION: ${{ steps.msys2.outputs.msys2-location }}
+      - name: Compile
+        run: .\make
+      - name: Install
+        run: .\make install
+      - name: Upload Gum devkit
+        uses: actions/upload-artifact@v4
+        with:
+          name: frida-gum-devkit-windows-arm64
+          path: ${{ env.FRIDA_PREFIX }}/lib/frida/devkits/gum/
+      - name: Upload GumJS devkit
+        uses: actions/upload-artifact@v4
+        with:
+          name: frida-gumjs-devkit-windows-arm64
+          path: ${{ env.FRIDA_PREFIX }}/lib/frida/devkits/gumjs/
+      - name: Upload Core devkit
+        uses: actions/upload-artifact@v4
+        with:
+          name: frida-core-devkit-windows-arm64
+          path: ${{ env.FRIDA_PREFIX }}/lib/frida/devkits/core/
+      - name: Upload frida-server
+        uses: actions/upload-artifact@v4
+        with:
+          name: frida-server-windows-arm64
+          path: ${{ env.FRIDA_PREFIX }}/bin/frida-server.exe
+      - name: Upload frida-portal
+        uses: actions/upload-artifact@v4
+        with:
+          name: frida-portal-windows-arm64
+          path: ${{ env.FRIDA_PREFIX }}/bin/frida-portal.exe
+      - name: Upload frida-inject
+        uses: actions/upload-artifact@v4
+        with:
+          name: frida-inject-windows-arm64
+          path: ${{ env.FRIDA_PREFIX }}/bin/frida-inject.exe
+      - name: Upload frida-gadget
+        uses: actions/upload-artifact@v4
+        with:
+          name: frida-gadget-windows-arm64
+          path: ${{ env.FRIDA_PREFIX }}/lib/frida/64/frida-gadget.dll
+      - name: Package Python bindings
+        run: |
+          $Env:FRIDA_EXTENSION = "$Env:FRIDA_PREFIX\lib\site-packages\frida\_frida.pyd"
+          cd subprojects\frida-python
+          pip wheel -w "$Env:FRIDA_PREFIX\wheels" --no-deps .
+      - name: Upload Python bindings
+        uses: actions/upload-artifact@v4
+        with:
+          name: frida-python-windows-arm64
+          path: ${{ env.FRIDA_PREFIX }}/wheels/*.whl
+      - name: Build Node.js bindings
+        run: |
+          $installdir = "$Env:FRIDA_PREFIX\prebuilds"
+          $Env:FRIDA_DEPS = "$pwd\deps"
+          $Env:PKG_CONFIG_PATH = "$Env:FRIDA_PREFIX\lib\pkgconfig"
+          function Run() {
+            $program = $args[0]
+            $arglist = $args | Select-Object -Skip 1
+            & $program $arglist
+            $result = $LASTEXITCODE
+            if ($result -ne 0) {
+              throw "'$program $arglist' failed with exit status $result"
+            }
+          }
+          Run python .\tools\ensure-submodules.py frida-node
+          cd subprojects\frida-node
+          Run npm version $FRIDA_VERSION
+          Run .\configure `
+              --prefix=$Env:FRIDA_PREFIX `
+              --host=windows-arm64
+          Run .\make prebuild
+          New-Item -ItemType Directory -Path $installdir
+          Copy-Item .\build\*.tar.gz -Destination $installdir
+      - name: Upload Node.js bindings
+        uses: actions/upload-artifact@v4
+        with:
+          name: frida-node-windows-arm64
+          path: ${{ env.FRIDA_PREFIX }}/prebuilds/*.tar.gz
 
   frida-macos:
     needs: sdk-macos
@@ -977,9 +1131,16 @@ jobs:
           aws-secret-access-key: ${{ secrets.S3_SECRET_KEY }}
           cloudflare-email: ${{ secrets.CF_EMAIL }}
           cloudflare-token: ${{ secrets.CF_TOKEN }}
+      - name: Grab frida-core
+        run: python tools/ensure-submodules.py frida-core
+      - name: Install Go toolchain
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: ${{ env.FRIDA_COMPILER_MOD }}
+          cache-dependency-path: ${{ env.FRIDA_COMPILER_MOD }}
       - name: Install Qt
         if: matrix.arch != 'arm64e'
-        uses: jurplel/install-qt-action@v3
+        uses: jurplel/install-qt-action@v4
         with:
           version: '6.7.0'
           cache: true
@@ -999,6 +1160,7 @@ jobs:
           -Dfrida_qml=${{ matrix.arch != 'arm64e' && 'enabled' || 'disabled' }}
           -Dfrida-gum:graft_tool=enabled
           -Dfrida-gum:devkits=gum,gumjs
+          -Dfrida-core:compiler_backend=${{ matrix.arch != 'arm64e' && 'enabled' || 'disabled' }}
           -Dfrida-core:devkits=core
       - name: Compile
         run: make
@@ -1075,28 +1237,17 @@ jobs:
         if: matrix.arch != 'arm64e'
         run: |
           installdir=$FRIDA_PREFIX/prebuilds
-          declare -A prebuilds=(
-            [node]="${{ env.NODE_TARGETS_DEFAULT }}"
-            [electron]="${{ env.ELECTRON_TARGETS_DEFAULT }}"
-          )
           export FRIDA_DEPS=$PWD/deps
           export PKG_CONFIG_PATH=$FRIDA_PREFIX/lib/pkgconfig
           python tools/ensure-submodules.py frida-node
           cd subprojects/frida-node
           npm version $FRIDA_VERSION
+          ./configure \
+              "--prefix=$FRIDA_PREFIX" \
+              --host=macos-${{ matrix.arch }}
+          make prebuild
           mkdir "$installdir"
-          for runtime targets in ${(kv)prebuilds}; do
-            for target in ${(@s/ /)targets}; do
-              ./configure \
-                  "--prefix=$FRIDA_PREFIX" \
-                  --host=macos-${{ matrix.arch }} \
-                  --with-runtime=$runtime \
-                  --with-target=$target
-              make prebuild
-              cp build/*.tar.gz "$installdir"
-              rm -rf build
-            done
-          done
+          cp build/*.tar.gz "$installdir"
         shell: zsh {0}
       - name: Upload Node.js bindings
         if: matrix.arch != 'arm64e'
@@ -1115,7 +1266,7 @@ jobs:
     needs: sdk-linux
     strategy:
       matrix:
-        arch: [x86, x86_64, x86_64-musl, armhf, arm64, arm64-musl, mips, mipsel, mips64, mips64el]
+        arch: [x86, x86_64, x86_64-musl, armhf, armhf-musl, armbe8, arm64, arm64be, arm64-musl, mips, mipsel, mips64, mips64el]
       fail-fast: false
     runs-on: ubuntu-latest
     container: ghcr.io/frida/x-tools-linux-${{ matrix.arch }}:latest
@@ -1131,17 +1282,25 @@ jobs:
           aws-secret-access-key: ${{ secrets.S3_SECRET_KEY }}
           cloudflare-email: ${{ secrets.CF_EMAIL }}
           cloudflare-token: ${{ secrets.CF_TOKEN }}
+      - name: Grab frida-core
+        run: python tools/ensure-submodules.py frida-core
+      - name: Install Go toolchain
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: ${{ env.FRIDA_COMPILER_MOD }}
+          cache-dependency-path: ${{ env.FRIDA_COMPILER_MOD }}
       - name: Configure qemu-user
         if: ${{ !startsWith(matrix.arch, 'x86') }}
         run: echo "FRIDA_QEMU_SYSROOT=/opt/x-tools/$XTOOLS_HOST/$XTOOLS_HOST/sysroot" >> $GITHUB_ENV
-      - name: Install packages needed for installing Qt
+      - name: Prepare environment for installing Qt
         if: matrix.arch == 'x86_64'
         run: |
           apt-get update
           apt-get install -y sudo
+          echo "PIP_BREAK_SYSTEM_PACKAGES=1" >> $GITHUB_ENV
       - name: Install Qt
         if: matrix.arch == 'x86_64'
-        uses: jurplel/install-qt-action@v3
+        uses: jurplel/install-qt-action@v4
         with:
           version: '6.7.0'
           cache: true
@@ -1160,6 +1319,7 @@ jobs:
           -Dlibdir=lib
           -Dfrida_qml=${{ matrix.arch == 'x86_64' && 'enabled' || 'disabled' }}
           -Dfrida-gum:devkits=gum,gumjs
+          -Dfrida-core:compiler_backend=${{ !(startsWith(matrix.arch, 'mips') || matrix.arch == 'armbe8' || matrix.arch == 'arm64be') && 'enabled' || 'disabled' }}
           -Dfrida-core:devkits=core
       - name: Compile
         run: make
@@ -1253,35 +1413,23 @@ jobs:
           name: frida-python-linux-${{ matrix.arch }}
           path: ${{ env.FRIDA_PREFIX }}/wheels/*.whl
       - name: Build Node.js bindings
-        if: ${{ !(startsWith(matrix.arch, 'mips') || endsWith(matrix.arch, '-musl')) }}
+        if: ${{ !(startsWith(matrix.arch, 'mips') || endsWith(matrix.arch, '-musl') || matrix.arch == 'armbe8' || matrix.arch == 'arm64be') }}
         run: |
           installdir=$FRIDA_PREFIX/prebuilds
-          declare -A prebuilds=(
-            [node]="${{ env.NODE_TARGETS_DEFAULT }}"
-            [electron]="${{ contains(matrix.arch, '64') && env.ELECTRON_TARGETS_DEFAULT || '' }}"
-          )
           export FRIDA_DEPS=$PWD/deps
           export PKG_CONFIG_PATH=$FRIDA_PREFIX/lib/pkgconfig
           python tools/ensure-submodules.py frida-node
           cd subprojects/frida-node
           npm version $FRIDA_VERSION
+          ./configure \
+              "--prefix=$FRIDA_PREFIX" \
+              --host=$XTOOLS_HOST
+          make prebuild
           mkdir "$installdir"
-          for runtime in "${!prebuilds[@]}"; do
-            targets=${prebuilds[$runtime]}
-            for target in $targets; do
-              ./configure \
-                  "--prefix=$FRIDA_PREFIX" \
-                  --host=$XTOOLS_HOST \
-                  --with-runtime=$runtime \
-                  --with-target=$target
-              make prebuild
-              cp build/*.tar.gz "$installdir"
-              rm -rf build
-            done
-          done
+          cp build/*.tar.gz "$installdir"
         shell: bash
       - name: Upload Node.js bindings
-        if: ${{ !(startsWith(matrix.arch, 'mips') || endsWith(matrix.arch, '-musl')) }}
+        if: ${{ !(startsWith(matrix.arch, 'mips') || endsWith(matrix.arch, '-musl') || matrix.arch == 'armbe8' || matrix.arch == 'arm64be') }}
         uses: actions/upload-artifact@v4
         with:
           name: frida-node-linux-${{ matrix.arch }}
@@ -1317,6 +1465,13 @@ jobs:
           aws-secret-access-key: ${{ secrets.S3_SECRET_KEY }}
           cloudflare-email: ${{ secrets.CF_EMAIL }}
           cloudflare-token: ${{ secrets.CF_TOKEN }}
+      - name: Grab frida-core
+        run: python tools/ensure-submodules.py frida-core
+      - name: Install Go toolchain
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: ${{ env.FRIDA_COMPILER_MOD }}
+          cache-dependency-path: ${{ env.FRIDA_COMPILER_MOD }}
       - name: Configure
         run: >-
           ./configure
@@ -1325,6 +1480,7 @@ jobs:
           --enable-portal
           --
           -Dfrida-gum:devkits=gum,gumjs
+          -Dfrida-core:compiler_backend=${{ matrix.arch != 'arm64e' && 'enabled' || 'disabled' }}
           -Dfrida-core:assets=installed
           -Dfrida-core:devkits=core
       - name: Compile
@@ -1460,6 +1616,8 @@ jobs:
           aws-secret-access-key: ${{ secrets.S3_SECRET_KEY }}
           cloudflare-email: ${{ secrets.CF_EMAIL }}
           cloudflare-token: ${{ secrets.CF_TOKEN }}
+      - name: Grab frida-core
+        run: python tools/ensure-submodules.py frida-core
       - name: Configure
         run: >-
           ./configure
@@ -1544,6 +1702,13 @@ jobs:
           aws-secret-access-key: ${{ secrets.S3_SECRET_KEY }}
           cloudflare-email: ${{ secrets.CF_EMAIL }}
           cloudflare-token: ${{ secrets.CF_TOKEN }}
+      - name: Grab frida-core
+        run: python tools/ensure-submodules.py frida-core
+      - name: Install Go toolchain
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: ${{ env.FRIDA_COMPILER_MOD }}
+          cache-dependency-path: ${{ env.FRIDA_COMPILER_MOD }}
       - name: Set up NDK
         id: setup-ndk
         uses: nttld/setup-ndk@v1
@@ -1560,6 +1725,7 @@ jobs:
           --enable-portal
           --
           -Dfrida-gum:devkits=gum,gumjs
+          -Dfrida-core:compiler_backend=enabled
           -Dfrida-core:devkits=core
       - name: Compile
         run: make
@@ -1678,7 +1844,11 @@ jobs:
           path: ${{ env.FRIDA_PREFIX }}/lib/frida/32/frida-gadget.so
 
   toolchain-windows:
-    runs-on: windows-latest
+    strategy:
+      matrix:
+        arch: [x86, arm64]
+      fail-fast: false
+    runs-on: ${{ matrix.arch == 'arm64' && 'windows-11-arm' || 'windows-latest' }}
     steps:
       - name: Check out repo
         uses: actions/checkout@v4
@@ -1690,16 +1860,16 @@ jobs:
           cloudflare-email: ${{ secrets.CF_EMAIL }}
           cloudflare-token: ${{ secrets.CF_TOKEN }}
       - name: Roll toolchain
-        run: python releng\deps.py roll toolchain windows-x86
+        run: python releng\deps.py roll toolchain windows-${{ matrix.arch }}
 
   sdk-windows:
     needs: toolchain-windows
     strategy:
       matrix:
-        arch: [x86, x86_64]
+        arch: [x86, x86_64, arm64]
         config: [md, mdd, mt, mtd]
       fail-fast: false
-    runs-on: windows-latest
+    runs-on: ${{ matrix.arch == 'arm64' && 'windows-11-arm' || 'windows-latest' }}
     steps:
       - name: Check out repo
         uses: actions/checkout@v4
@@ -1827,7 +1997,7 @@ jobs:
   toolchain-linux:
     strategy:
       matrix:
-        arch: [x86, x86_64, x86_64-musl, armhf, arm64, arm64-musl]
+        arch: [x86, x86_64, x86_64-musl, armhf, armhf-musl, armbe8, arm64, arm64be, arm64beilp32, arm64-musl]
       fail-fast: false
     runs-on: ubuntu-latest
     container: ghcr.io/frida/x-tools-linux-${{ matrix.arch }}:latest
@@ -1848,7 +2018,7 @@ jobs:
     needs: toolchain-linux
     strategy:
       matrix:
-        arch: [x86, x86_64, x86_64-musl, armhf, arm64, arm64-musl, mips, mipsel, mips64, mips64el]
+        arch: [x86, x86_64, x86_64-musl, armhf, armhf-musl, armbe8, arm64, arm64be, arm64beilp32, arm64-musl, mips, mipsel, mips64, mips64el]
       fail-fast: false
     runs-on: ubuntu-latest
     container: ghcr.io/frida/x-tools-linux-${{ matrix.arch }}:latest
